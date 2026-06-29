@@ -1568,7 +1568,8 @@ function initGoogleAuth() {
 // 許可するメールアドレス（GASのALLOWED_EMAILSと同じ）
 const APP_ALLOWED_EMAILS = [
   'ai.tajiri@i3-systems.com',
-  'h.kimura@i3-systems.com'
+  'h.kimura@i3-systems.com',
+  'm.yamamoto@i3-systems.com'
 ];
 
 function handleGoogleLoginForApp() {
@@ -1793,11 +1794,7 @@ function updateGasIndicator(){
 }
 
 // ══ MEMBERS（localStorage管理） ══
-const DEFAULT_MEMBERS = [
-  {id:'m1', name:'メンバーA', color:'#2d7a4f', initial:'A', email:'', calendarId:'primary', pin:''},
-  {id:'m2', name:'メンバーB', color:'#2563a8', initial:'B', email:'', calendarId:'primary', pin:''},
-  {id:'m3', name:'メンバーC', color:'#6d3faa', initial:'C', email:'', calendarId:'primary', pin:''},
-];
+const DEFAULT_MEMBERS = [];
 let MEMBERS = JSON.parse(localStorage.getItem('team_members')||'null') || DEFAULT_MEMBERS;
 function saveMembers(){localStorage.setItem('team_members',JSON.stringify(MEMBERS)); scheduleAutoSync();}
 
@@ -8979,9 +8976,9 @@ function downloadCsvTemplate(){
   const memberNames = MEMBERS.map(m=>m.name).join(' / ');
   const rows = [
     CSV_HEADERS,
-    ['勤怠データ確認・修正','給与計算','2026-05-13','2026-05-15','メンバーA','','1','毎月','打刻漏れ・遅刻早退の確認','打刻データ確認','遅刻・早退リスト作成','','',''],
-    ['給与計算','給与計算','2026-05-16','2026-05-20','メンバーB','メンバーA','3','毎月','勤怠締め後に開始','計算シート作成','明細確認','振込データ作成','',''],
-    ['入社手続き','入社・退職','2026-05-01','2026-05-10','メンバーC','メンバーA','3','','当月入社者分','社保加入手続き','雇用保険加入','労働条件通知書交付','',''],
+    ['勤怠データ確認・修正','給与計算','2026-05-13','2026-05-15','','','1','毎月','打刻漏れ・遅刻早退の確認','打刻データ確認','遅刻・早退リスト作成','','',''],
+    ['給与計算','給与計算','2026-05-16','2026-05-20','','','3','毎月','勤怠締め後に開始','計算シート作成','明細確認','振込データ作成','',''],
+    ['入社手続き','入社・退職','2026-05-01','2026-05-10','','','3','','当月入社者分','社保加入手続き','雇用保険加入','労働条件通知書交付','',''],
   ];
   const bom = '\uFEFF';
   const csv = bom + rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
@@ -9148,9 +9145,9 @@ function downloadTemplateCSV(){
   ];
   // テンプレートが空の場合はサンプル行を追加
   if(templates.length===0){
-    rows.push(['勤怠データ確認・修正','給与計算','2','メンバーA','3','打刻漏れの確認','','','','','']);
+    rows.push(['勤怠データ確認・修正','給与計算','2','','3','打刻漏れの確認','','','','','']);
     rows.push(['社会保険料納付','給与計算','10','','1','','','','','','']);
-    rows.push(['入社手続き','入社・退職','3','メンバーB','','雇用保険・社保手続き','社保加入届','雇用保険届','','','']);
+    rows.push(['入社手続き','入社・退職','3','','','雇用保険・社保手続き','社保加入届','雇用保険届','','','']);
   }
   const csv = bom + rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
   const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
