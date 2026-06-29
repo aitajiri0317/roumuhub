@@ -3640,11 +3640,17 @@ async function checkPin(){
 function doLogin(id){
   currentUser = MEMBERS.find(m=>m.id===id);
   document.getElementById('user-select-modal').classList.remove('open');
-  document.getElementById('current-name').textContent = currentUser.name;
-  const avatarEl = document.getElementById('current-avatar');
-  if (avatarEl) {
-    avatarEl.textContent = currentUser.initial;
-    avatarEl.style.background = currentUser.color;
+  // Googleアバターが設定済みの場合は名前・アバターをGoogleアカウントのものを使う
+  const gAvatar = document.getElementById('google-avatar');
+  const isGoogleLogin = gAvatar && gAvatar.src && gAvatar.style.display !== 'none';
+  if (!isGoogleLogin) {
+    document.getElementById('current-name').textContent = currentUser.name;
+    const avatarEl = document.getElementById('current-avatar');
+    if (avatarEl) {
+      avatarEl.textContent = currentUser.initial;
+      avatarEl.style.background = currentUser.color;
+      avatarEl.style.display = 'flex';
+    }
   }
   renderAll();
   checkAlerts();
