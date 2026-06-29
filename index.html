@@ -456,8 +456,7 @@ body.modal-open{overflow:hidden}
       <div class="user-avatar" id="current-avatar" style="display:none">?</div>
       <span class="user-name" id="current-name">ログイン中...</span>
     </div>
-    <button class="sync-btn" onclick="syncData()" id="sync-btn">🔄 同期</button>
-    <span id="sync-status" style="font-size:10px;color:var(--text2);font-family:var(--mono);white-space:nowrap"></span>
+    <span id="sync-status" style="font-size:10px;color:var(--text2);font-family:var(--mono);white-space:nowrap;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;cursor:pointer" onclick="immediateSync()" title="クリックで即時同期"></span>
     <button class="btn btn-ghost-w" onclick="openTemplateModal()" style="font-size:11px" id="hdr-template-btn">📋 テンプレート</button>
     <button class="btn btn-ghost-w" onclick="openBulkAssigneeModal()" style="font-size:11px" title="担当者を一括変更">👤 担当者変更</button>
     <button class="btn btn-white" onclick="openModal()" id="hdr-add-btn">＋ タスク追加</button>
@@ -2202,6 +2201,8 @@ function saveGasFromSettings(){
   else localStorage.removeItem('gas_url');
   updateGasIndicator();
   updateGasStatusBadge();
+  // GAS URLが設定されたら自動取得を開始
+  if(url) startAutoPoll();
   toast(url?'✅ GAS URLを保存しました':'🔌 GAS URLをリセットしました');
 }
 
@@ -3488,6 +3489,8 @@ function init(){
   setInterval(renderReminders, 60000);
   updateGasIndicator();
   setInterval(checkAlerts, 300000);
+  // GAS設定済みなら30秒ごとの自動取得を開始
+  if(isGasEnabled()) startAutoPoll();
 }
 
 function loadDefaults(){
@@ -3508,33 +3511,77 @@ function loadDefaults(){
 }
 
 
-// ══ 自動保存（デバウンス付きGAS同期）══
-let _autoSyncTimer = null;
-let _isSyncing = false; // 同期中フラグ（競合防止）
+// ══ 同期エンジン（自動保存・自動取得・削除即時）══
+let _autoSyncTimer = null;   // デバウンス用タイマー
+let _isSyncing = false;       // 同期中フラグ（競合防止）
+let _lastUploadTs = 0;        // 最終アップロード時刻（二重送信防止）
+let _autoPollTimer = null;    // 30秒自動取得タイマー
 
-// ── 内部保存専用関数（scheduleAutoSyncを発火しない）──
+// ── 内部保存専用関数（GAS同期を発火しない）──
 // applyLoadedData等「サーバーから受け取ったデータをlocalStorageに書く」際に使用
 function _saveTasksLocal(){ localStorage.setItem('roumu_team_tasks', JSON.stringify(tasks)); }
 function _saveMembersLocal(){ localStorage.setItem('team_members', JSON.stringify(MEMBERS)); }
 function _saveAnnualLocal(){ localStorage.setItem('annual_projects', JSON.stringify(annualProjects)); }
 
+// ── 追加・編集用：3秒デバウンスでアップロード ──
 function scheduleAutoSync() {
   if (!isGasEnabled()) return;
-  if (_isSyncing) return; // 同期中は自動保存をスキップ
+  if (_isSyncing) return;
   clearTimeout(_autoSyncTimer);
   _autoSyncTimer = setTimeout(async () => {
     if (_isSyncing) return;
-    _isSyncing = true;
-    const statusEl = document.getElementById('sync-status');
-    if (statusEl) statusEl.textContent = '💾 自動保存中...';
-    try {
-      await syncData(true, true);
-      if (statusEl) statusEl.textContent = '💾 ' + new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) + ' 自動保存済';
-    } finally {
-      _isSyncing = false;
-    }
+    // 直近3秒以内に別の同期が完了していれば重複送信を回避
+    if (Date.now() - _lastUploadTs < 2500) return;
+    await _doUpload();
   }, 3000);
 }
+
+// ── 削除用：即時アップロード（デバウンスなし）──
+async function immediateSync() {
+  if (!isGasEnabled()) return;
+  clearTimeout(_autoSyncTimer); // デバウンス中のものをキャンセル
+  await _doUpload();
+}
+
+// ── 実際のアップロード処理（共通）──
+async function _doUpload() {
+  if (_isSyncing) return;
+  _isSyncing = true;
+  setSyncStatus('💾 保存中...');
+  try {
+    await syncData(true, true);
+    _lastUploadTs = Date.now();
+    setSyncStatus('💾 ' + new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) + ' 自動保存済');
+  } catch(e) {
+    setSyncStatus('⚠ 保存失敗');
+  } finally {
+    _isSyncing = false;
+  }
+}
+
+// ── 30秒ごとの自動ダウンロード（相手の更新を取得）──
+function startAutoPoll() {
+  if (_autoPollTimer) return; // 二重起動防止
+  _autoPollTimer = setInterval(async () => {
+    if (!isGasEnabled() || _isSyncing) return;
+    try {
+      const gasUrl = getGasUrl();
+      const qs = 'action=load';
+      const res = await fetch(gasUrl + '?' + qs, { redirect: 'follow' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.error) return;
+      // serverTsが変わっていれば反映（変わっていなければスキップ）
+      const stored = localStorage.getItem('roumu_server_ts') || '';
+      if (data.serverTs && data.serverTs === stored) return;
+      if (data.serverTs) { _serverTs = data.serverTs; localStorage.setItem('roumu_server_ts', _serverTs); }
+      applyLoadedData(data);
+      renderAll();
+      setSyncStatus('↓ ' + new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) + ' 自動取得済');
+    } catch(e) { /* ネットワークエラーは無視 */ }
+  }, 30000); // 30秒ごと
+}
+
 function saveTasks(){
   localStorage.setItem('roumu_team_tasks',JSON.stringify(tasks));
   scheduleAutoSync();
@@ -3789,7 +3836,7 @@ async function syncData(silent=false, uploadOnly=false){
   // 手動同期中は自動保存をブロック
   _isSyncing = true;
   const btn=document.getElementById('sync-btn');
-  btn.classList.add('syncing');btn.innerHTML='<span class="spin"></span> 同期中...';btn.disabled=true;
+  if(btn){btn.classList.add('syncing');btn.innerHTML='<span class="spin"></span> 同期中...';btn.disabled=true;}
   setSyncStatus('同期中...');
   showLoading(uploadOnly ? '保存・同期中…' : '同期中…');
   try{
@@ -3891,7 +3938,7 @@ async function syncData(silent=false, uploadOnly=false){
   }finally{
     hideLoading();
     _isSyncing = false;
-    btn.classList.remove('syncing');btn.innerHTML='🔄 同期';btn.disabled=false;
+    if(btn){btn.classList.remove('syncing');btn.innerHTML='🔄 同期';btn.disabled=false;}
   }
 }
 
@@ -4117,21 +4164,38 @@ function toggleSelectAll(checked){
 function bulkDelete(){
   const ids = getCheckedIds();
   if(!ids.length){ toast('⚠ タスクを選択してください',true); return; }
-  if(!confirm(`選択した${ids.length}件のタスクを削除しますか？`)) return;
+  if(!confirm('選択した'+ids.length+'件のタスクを削除しますか？')) return;
   // カレンダーからも削除
   ids.forEach(id => {
-    const t = tasks.find(t=>t.id===id);
+    const t = tasks.find(t=>String(t.id)===String(id));
     if(t && t.assignee && isGasEnabled()){
       const member = MEMBERS.find(m=>m.id===t.assignee);
       if(member && member.email) autoDeleteTaskFromCalendar(id, t.title, member);
     }
   });
-  tasks = tasks.filter(t => !ids.includes(t.id));
-  saveTasks(); renderAll();
-  document.getElementById('select-all-chk').checked = false;
-  document.getElementById('bulk-actions').style.display = 'none';
-  toast(`🗑 ${ids.length}件を削除しました`);
-  if(isGasEnabled()) syncData(true, true);
+  // チームタスクから削除
+  const beforeTeam = tasks.length;
+  tasks = tasks.filter(t => !ids.includes(String(t.id)));
+  if(tasks.length < beforeTeam) saveTasks();
+  // 個人タスクから削除（カレンダーからも削除）
+  if(currentUser){
+    const priv = getPrivateTasks();
+    priv.forEach(t => {
+      if(ids.includes(String(t.id)) && t.assignee && isGasEnabled()){
+        const member = MEMBERS.find(m=>m.id===t.assignee);
+        if(member && member.email) autoDeleteTaskFromCalendar(t.id, t.title, member);
+      }
+    });
+    const newPriv = priv.filter(t => !ids.includes(String(t.id)));
+    if(newPriv.length < priv.length) savePrivateTasks(newPriv);
+  }
+  renderAll();
+  const allChk = document.getElementById('select-all-chk');
+  if(allChk) allChk.checked = false;
+  const bulkArea = document.getElementById('bulk-actions');
+  if(bulkArea) bulkArea.style.display = 'none';
+  toast('🗑 '+ids.length+'件を削除しました');
+  if(isGasEnabled()) immediateSync();
 }
 
 function bulkDuplicate(){
@@ -8893,7 +8957,7 @@ function saveTask(){
       }).join('\n');
       if(!confirm('同じタイトルのタスクが' + dups.length + '件あります。\n\n' + info + '\n\n重複して作成しますか？')) return;
     }
-    savedTask={id:Date.now(),...v,comments:[]};
+    savedTask={id:String(Date.now()),...v,comments:[]};
     if(isPrivate){
       const priv = getPrivateTasks();
       priv.push(savedTask);
@@ -8909,14 +8973,13 @@ function saveTask(){
   toast('💾 保存しました');
   if(isGasEnabled()&&savedTask.assignee&&savedTask.due&&!savedTask.private){
     autoSyncTaskToCalendar(savedTask);
-    toast('📅 Googleカレンダーに同期中...');
   }
-  if(isGasEnabled()) syncData(true, true);
+  // scheduleAutoSyncが3秒後に自動アップロードするため個別のsyncData不要
 }
 
 function copyTask(e,id){
   e.stopPropagation();const src=tasks.find(t=>t.id===id);if(!src)return;
-  tasks.push({...src,id:Date.now(),title:src.title+' (コピー)',status:'todo',comments:[],files:[]});
+  tasks.push({...src,id:String(Date.now()),title:src.title+' (コピー)',status:'todo',comments:[],files:[]});
   saveTasks();renderAll();toast('📋 コピーしました');
 }
 
@@ -8969,7 +9032,7 @@ function delTask(e,id){
     if(member&&member.email) autoDeleteTaskFromCalendar(id, t.title, member);
   }
   tasks=tasks.filter(t=>t.id!==id);saveTasks();renderAll();toast('🗑 削除しました');
-  if(isGasEnabled())syncData(true, true);
+  if(isGasEnabled()) immediateSync();
 }
 
 function setView(v,el){
