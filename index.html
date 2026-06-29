@@ -6597,10 +6597,11 @@ function jumpToView(type){
   // まず明示的にmain-panelとlayoutを表示状態にする
   const mainPanel = document.getElementById('main-panel');
   const layout = document.querySelector('.layout');
-  const rightPanel = document.querySelector('.right-panel');
   if(mainPanel){ mainPanel.style.display = ''; }
   if(layout){ layout.style.display = 'grid'; }
-  if(rightPanel){ rightPanel.style.display = ''; }
+  // 右パネルはviewModeに応じて表示制御（個人ビューでは非表示の場合あり）
+  const rightPanel = document.querySelector('.right-panel');
+  if(rightPanel && viewMode !== 'personal'){ rightPanel.style.display = ''; }
   // 他のパネルを非表示にする
   ['news-panel','links-panel','docs-panel','admin-panel','archive-panel'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
