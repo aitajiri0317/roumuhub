@@ -3568,7 +3568,10 @@ function startAutoPoll() {
     if (document.querySelector('.modal-overlay.open')) return;
     try {
       const gasUrl = getGasUrl();
-      const qs = 'action=load' + (gAccessToken ? '&token=' + encodeURIComponent(gAccessToken) : '');
+      const ownerEmail = currentUser ? (currentUser.email || '') : '';
+      const qs = 'action=load'
+        + (gAccessToken ? '&token=' + encodeURIComponent(gAccessToken) : '')
+        + (ownerEmail ? '&ownerEmail=' + encodeURIComponent(ownerEmail) : '');
       const res = await fetch(gasUrl + '?' + qs, { redirect: 'follow' });
       if (!res.ok) return;
       const data = await res.json();
@@ -3719,7 +3722,9 @@ function doLogin(id){
   // ログイン時にGASから最新データを取得して反映
   if(isGasEnabled()){
     setSyncStatus('⏳ データ取得中...');
-    fetch(getGasUrl()+'?action=load'+(gAccessToken?'&token='+encodeURIComponent(gAccessToken):''), {redirect:'follow'})
+    const _ownerEmail = currentUser ? (currentUser.email || '') : '';
+    fetch(getGasUrl()+'?action=load'+(gAccessToken?'&token='+encodeURIComponent(gAccessToken):'')
+      +(_ownerEmail?'&ownerEmail='+encodeURIComponent(_ownerEmail):''), {redirect:'follow'})
       .then(r=>r.json())
       .then(data=>{
         if(data && !data.error){
@@ -3901,6 +3906,9 @@ async function syncData(silent=false, uploadOnly=false){
       leaveChecklists:   JSON.stringify(leaveChecklistPersons),
       onboardingPersons: JSON.stringify(onboardingPersons),
       topicItems:        JSON.stringify(getAllTopicItems()),
+      // 個人タスク：ownerEmailを付与してGASに送信（他ユーザーのは送らない）
+      privateTasks:      JSON.stringify(currentUser ? getPrivateTasks().map(t=>({...t, ownerEmail: currentUser.email||''})) : []),
+      ownerEmail:        currentUser ? (currentUser.email || '') : '',
     });
 
     // 競合チェック
@@ -3973,6 +3981,15 @@ function applyLoadedData(data){
     // IDを文字列に統一してから保存
     tasks = data.tasks.map(t => ({ ...t, id: String(t.id) }));
     _saveTasksLocal();
+  }
+  // 個人タスク：自分のものだけをlocalStorageに反映（厳格隔離）
+  if(data.privateTasks && Array.isArray(data.privateTasks) && currentUser){
+    const myEmail = currentUser.email || '';
+    // ownerEmailが自分と一致するものだけ反映（安全弁）
+    const myPrivate = data.privateTasks.filter(t => t.ownerEmail === myEmail);
+    if(myPrivate.length > 0 || data.privateTasks.length === 0){
+      savePrivateTasks(myPrivate.map(t => ({ ...t, id: String(t.id) })));
+    }
   }
   if(data.members && data.members.length){
     MEMBERS = data.members.map(m => ({ ...m, id: String(m.id) }));
@@ -9055,8 +9072,16 @@ function saveTask(){
 
   saveTasks();closeModal('modal-overlay');renderAll();
   toast('💾 保存しました');
-  if(isGasEnabled()&&savedTask.assignee&&savedTask.due&&!savedTask.private){
-    autoSyncTaskToCalendar(savedTask);
+  // 個人タスクも期限があればカレンダー同期（自分のカレンダーのみ）
+  if(isGasEnabled()&&savedTask.due){
+    if(!savedTask.private){
+      // チームタスク：担当者のカレンダーに同期
+      if(savedTask.assignee) autoSyncTaskToCalendar(savedTask);
+    } else {
+      // 個人タスク：自分のカレンダーのみに同期
+      const selfMember = currentUser ? MEMBERS.find(m=>m.id===currentUser.id) : null;
+      if(selfMember && selfMember.email) autoSyncTaskToCalendar({...savedTask, assignee: selfMember.id});
+    }
   }
   // scheduleAutoSyncが3秒後に自動アップロードするため個別のsyncData不要
   // 削除・ステータス変更の場合は即時同期
