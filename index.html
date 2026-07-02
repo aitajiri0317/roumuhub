@@ -2079,6 +2079,18 @@ async function fetchTodayGcal(){
   }
 }
 
+// UTC ISO形式の日時文字列をJSTのHH:MM形式に変換
+function toJstTime(isoStr){
+  if(!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString('ja-JP', {
+      hour: '2-digit', minute: '2-digit',
+      timeZone: 'Asia/Tokyo'
+    });
+  } catch(e) { return isoStr; }
+}
+
 function renderGcalList(events){
   const el = document.getElementById('gcal-list');
   if(!el) return;
@@ -2089,17 +2101,25 @@ function renderGcalList(events){
   const d = new Date();
   const gcalUrl = `https://calendar.google.com/calendar/r/day/${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
   el.innerHTML = events.map(ev=>{
-    const time = ev.allDay ? '終日' : `${ev.start}〜${ev.end}`;
+    // A案: 時刻を上段・タイトルを下段
+    let timeHtml = '';
+    if(ev.allDay){
+      timeHtml = '<div style="font-size:10px;font-family:var(--mono);color:var(--text3);font-weight:700;margin-bottom:3px">終日</div>';
+    } else {
+      const startJst = toJstTime(ev.start);
+      const endJst   = toJstTime(ev.end);
+      timeHtml = `<div style="font-size:11px;font-family:var(--mono);color:var(--accent);font-weight:700;margin-bottom:3px">${startJst} 〜 ${endJst}</div>`;
+    }
     const meet = ev.meetUrl
       ? `<a href="${ev.meetUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:10px;color:var(--blue);text-decoration:none;display:block;margin-top:3px">🎥 Meet参加</a>`
       : '';
-    const loc = ev.location ? `<div style="font-size:10px;color:var(--text3)">📍 ${ev.location}</div>` : '';
+    const loc = ev.location ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">📍 ${ev.location}</div>` : '';
     return `<a href="${gcalUrl}" target="_blank" rel="noopener" style="text-decoration:none;display:block;margin-bottom:5px">
       <div style="padding:7px 9px;border-radius:7px;background:#fff;border:1px solid var(--border);transition:all .12s;cursor:pointer"
         onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--accent-light)'"
         onmouseout="this.style.borderColor='var(--border)';this.style.background='#fff'">
-        <div style="font-size:10px;font-family:var(--mono);color:var(--accent);font-weight:700;margin-bottom:2px">${time}</div>
-        <div style="font-size:12px;font-weight:600;color:var(--text);line-height:1.3">${ev.title}</div>
+        ${timeHtml}
+        <div style="font-size:12px;font-weight:600;color:var(--text);line-height:1.3">${escHtml(ev.title||'')}</div>
         ${loc}${meet}
       </div>
     </a>`;
@@ -6847,21 +6867,32 @@ function dayClick(dateStr){
            <button onclick="resetCalFilter()" style="margin-left:auto;font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--text2);cursor:pointer">✕ クリア</button>
          </div>
          <div class="empty-state"><div class="icon">✨</div>この日のタスクはありません</div>`;
-  // カレンダーの選択日をハイライト
-  document.querySelectorAll('.cal-day').forEach(el=>el.classList.remove('selected'));
-  // 今日以外はハイライト
+  // カレンダーの選択日をハイライト（単一選択に修正）
+  // まず全日付のoutlineとselectedをリセット
+  document.querySelectorAll('.cal-day').forEach(el=>{
+    el.classList.remove('selected');
+    el.style.outline='';
+    el.style.background='';
+  });
+  // 選択した日付だけをハイライト
   if(!isToday){
     document.querySelectorAll('.cal-day').forEach(el=>{
-      if(el.textContent.trim()===String(parseInt(dateStr.split('-')[2])).trim()&&!el.classList.contains('empty')){
-        const ds=`${cy}-${pad(cm+1)}-${pad(parseInt(el.textContent))}`;
-        if(ds===dateStr)el.style.outline='2px solid var(--accent)';
+      if(el.classList.contains('empty')) return;
+      const dayNum = parseInt(el.textContent.trim());
+      const ds = `${cy}-${pad(cm+1)}-${pad(dayNum)}`;
+      if(ds === dateStr){
+        el.style.outline = '2px solid var(--accent)';
+        el.style.background = 'var(--accent-light)';
       }
     });
   }
 }
 
 function resetCalFilter(){
-  document.querySelectorAll('.cal-day').forEach(el=>el.style.outline='');
+  document.querySelectorAll('.cal-day').forEach(el=>{
+    el.style.outline='';
+    el.style.background='';
+  });
   renderTasks();
 }
 function bizDays(){
