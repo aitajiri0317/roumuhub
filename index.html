@@ -28,14 +28,14 @@
 body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
 
 /* ── HEADER ── */
-header{background:#fff;border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:56px;position:sticky;top:0;z-index:100;box-shadow:var(--shadow-sm)}
-.logo-area{display:flex;align-items:center;gap:12px;cursor:pointer;transition:opacity .15s}
+header{background:#fff;border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:52px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.logo-area{display:flex;align-items:center;gap:10px;cursor:pointer;transition:opacity .15s;flex-shrink:0}
 .logo-area:hover{opacity:.8}
 .logo-img-wrap{width:36px;height:36px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:800;letter-spacing:-1px;overflow:hidden;flex-shrink:0}
 .logo-img-wrap img{width:100%;height:100%;object-fit:contain}
 .logo-text{font-size:14px;font-weight:700;color:var(--text);letter-spacing:-.3px}
 .logo-sub{font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.5px;text-transform:uppercase}
-.header-right{display:flex;align-items:center;gap:8px}
+.header-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
 #clock{font-family:var(--mono);font-size:11px;color:var(--text3);padding:3px 8px;background:var(--surface2);border-radius:5px;border:1px solid var(--border)}
 .user-badge{display:flex;align-items:center;gap:7px;padding:5px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;cursor:pointer;transition:all .15s}
 .user-badge:hover{border-color:var(--accent);background:#fff}
@@ -57,7 +57,7 @@ header{background:#fff;border-bottom:1px solid var(--border);padding:0 24px;disp
 /* ── ALERT BANNER ── */
 
 /* ── CATEGORY TABS ── */
-.cat-tabs-wrap{background:#f5f0e8;border-bottom:1px solid #ddd5c8}
+.cat-tabs-wrap{background:#f8f5f0;border-bottom:1px solid #e5ddd3}
 .cat-tabs{display:flex;padding:0;overflow-x:auto;gap:0;scrollbar-width:none}
 .cat-tabs::-webkit-scrollbar{display:none}
 .cat-tabs-sub{display:flex;padding:0 22px;overflow-x:auto;gap:0;background:#ece7de;border-top:1px solid #ddd5c8}
@@ -456,7 +456,7 @@ body.modal-open{overflow:hidden}
       <div class="user-avatar" id="current-avatar" style="display:none">?</div>
       <span class="user-name" id="current-name">ログイン中...</span>
     </div>
-    <span id="sync-status" style="font-size:10px;color:var(--text2);font-family:var(--mono);white-space:nowrap;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;cursor:pointer" onclick="immediateSync()" title="クリックで即時同期"></span>
+    <span id="sync-status" style="font-size:10px;color:var(--text3);font-family:var(--mono);white-space:nowrap;padding:3px 8px;background:var(--surface2);border:1px solid transparent;border-radius:5px;cursor:pointer;transition:all .15s;min-width:80px;text-align:center" onclick="immediateSync()" onmouseover="this.style.borderColor='var(--border)'" onmouseout="this.style.borderColor='transparent'" title="クリックで即時同期"></span>
     <button class="btn btn-ghost-w" onclick="openTemplateModal()" style="font-size:11px" id="hdr-template-btn">📋 テンプレート</button>
     <button class="btn btn-ghost-w" onclick="openBulkAssigneeModal()" style="font-size:11px" title="担当者を一括変更">👤 担当者変更</button>
     <button class="btn btn-white" onclick="openModal()" id="hdr-add-btn">＋ タスク追加</button>
@@ -4128,8 +4128,8 @@ function renderAll(){renderCatTabCounts();renderStats();renderTasks();renderCal(
 function setMajorCat(cat,el){
   majorCat=cat;
   filt='all'; statusFilt='all';
-  document.querySelectorAll('.cat-tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
+  document.querySelectorAll('.cat-tab,.cat-tab-sub').forEach(t=>t.classList.remove('active'));
+  if(el) el.classList.add('active');
 
   const isNews=(cat==='news');
   const isLinks=(cat==='links');
@@ -5950,7 +5950,6 @@ function cardHTML(t){
     </div>`;
   return `<div class="task-card status-${t.status}" id="card-${t.id}"
     onclick="toggleCard(${t.id})"
-    ondblclick="editTask(event,${t.id})"
     onkeydown="handleCardKey(event,${t.id})">
     <div class="task-card-top">
       <!-- チェックボックス -->
@@ -6090,13 +6089,17 @@ function stRowHTML(parentId,s){
 }
 
 function toggleCard(id){
-  const el=document.getElementById('card-'+id);
-  const expanded=el.classList.toggle('expanded');
-  const arrow=document.getElementById('arrow-'+id);
-  if(arrow)arrow.style.transform=expanded?'rotate(90deg)':'rotate(0deg)';
-  if(expanded){
-    setTimeout(()=>document.getElementById('st-inp-'+id)?.focus(),260);
-  }
+  // チェックボックスやボタンからのクリックは上位で stopPropagation 済み
+  // カードクリック → 編集モーダルをダイレクトに開く
+  // （選択モードはチェックボックスの onchange のみで制御）
+  const e = window.event || {};
+  const target = e.target || e.srcElement;
+  // チェックボックス・ボタン・入力要素のクリックは無視（念のため）
+  if(target && (target.tagName === 'INPUT' || target.tagName === 'BUTTON' ||
+      target.tagName === 'A' || target.tagName === 'SELECT' ||
+      target.tagName === 'TEXTAREA' || target.closest('.task-actions') ||
+      target.closest('.quick-edit-bar') || target.closest('.subtask-inline'))) return;
+  editTask({stopPropagation:()=>{}}, id);
 }
 
 // ══ SUBTASK CRUD ══
