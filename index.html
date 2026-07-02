@@ -1,4 +1,4 @@
-<!DOCTYPE html>　
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" referrerpolicy="no-referrer">
@@ -1634,15 +1634,23 @@ async function completeAppLogin() {
       }
     }
 
-    // ヘッダーにGoogleアバターを表示
+    // ヘッダーにGoogleアバター・名前を表示
     const avatarEl = document.getElementById('google-avatar');
     const initEl = document.getElementById('current-avatar');
+    const nameEl = document.getElementById('current-name');
+    if (nameEl) nameEl.textContent = info.name || email.split('@')[0];
     if (avatarEl && info.picture) {
       avatarEl.src = info.picture;
       avatarEl.style.display = 'block';
       if (initEl) initEl.style.display = 'none';
-    } else if (initEl) {
-      initEl.style.display = 'flex';
+    } else {
+      // アバター画像がない場合はイニシャルを表示
+      if (avatarEl) avatarEl.style.display = 'none';
+      if (initEl) {
+        initEl.textContent = member.initial;
+        initEl.style.background = member.color;
+        initEl.style.display = 'flex';
+      }
     }
     // ツールにログイン
     doLogin(member.id);
@@ -2161,6 +2169,7 @@ async function testSyncMinimal(){
     fd.append('tasks',   JSON.stringify([{id:1,title:'テスト',status:'todo'}]));
     fd.append('members', JSON.stringify([]));
     fd.append('meta',    JSON.stringify({}));
+    if(gAccessToken) fd.append('token', gAccessToken);
     const r = await fetch(url, { method:'POST', body:fd, redirect:'follow' });
     const text = await r.text();
     const d = JSON.parse(text);
@@ -2182,7 +2191,8 @@ async function testSyncMinimal(){
 
   // Step4: loadを確認
   try {
-    const r = await fetch(`${url}?action=load`, { redirect:'follow' });
+    const tokenParam = gAccessToken ? '&token=' + encodeURIComponent(gAccessToken) : '';
+    const r = await fetch(`${url}?action=load${tokenParam}`, { redirect:'follow' });
     const d = await r.json();
     const taskCount = (d.tasks||[]).length;
     steps.push(`✅ GET load: タスク${taskCount}件取得`);
@@ -3564,9 +3574,11 @@ function startAutoPoll() {
   if (_autoPollTimer) return; // 二重起動防止
   _autoPollTimer = setInterval(async () => {
     if (!isGasEnabled() || _isSyncing) return;
+    // BUG-01: モーダルが開いている場合は自動取得をスキップ（入力中のデータ保護）
+    if (document.querySelector('.modal-overlay.open')) return;
     try {
       const gasUrl = getGasUrl();
-      const qs = 'action=load';
+      const qs = 'action=load' + (gAccessToken ? '&token=' + encodeURIComponent(gAccessToken) : '');
       const res = await fetch(gasUrl + '?' + qs, { redirect: 'follow' });
       if (!res.ok) return;
       const data = await res.json();
@@ -3717,7 +3729,7 @@ function doLogin(id){
   // ログイン時にGASから最新データを取得して反映
   if(isGasEnabled()){
     setSyncStatus('⏳ データ取得中...');
-    fetch(getGasUrl()+'?action=load', {redirect:'follow'})
+    fetch(getGasUrl()+'?action=load'+(gAccessToken?'&token='+encodeURIComponent(gAccessToken):''), {redirect:'follow'})
       .then(r=>r.json())
       .then(data=>{
         if(data && !data.error){
@@ -3767,6 +3779,7 @@ async function autoSyncTaskToCalendar(task){
       task:   JSON.stringify({ id: task.id, title: task.title, due: task.due, cat: task.cat, status: task.status, note: task.note || '' }),
       member: JSON.stringify({ name: member.name, calendarId: member.calendarId, email: member.email }),
     });
+    if(gAccessToken) params.append('token', gAccessToken);
     await fetch(`${getGasUrl()}?${params}`, { redirect:'follow' });
   } catch(e) {
     console.warn('autoSyncTaskToCalendar failed:', e);
@@ -3783,6 +3796,7 @@ async function autoDeleteTaskFromCalendar(taskId, taskTitle, member){
       taskTitle: taskTitle || '',
       member:    JSON.stringify({ calendarId: member.calendarId, email: member.email }),
     });
+    if(gAccessToken) params.append('token', gAccessToken);
     await fetch(`${getGasUrl()}?${params}`, { redirect:'follow' });
   } catch(e) {
     console.warn('autoDeleteTaskFromCalendar failed:', e);
@@ -3859,6 +3873,8 @@ async function syncData(silent=false, uploadOnly=false){
 
     async function gasPost(params){
       const fd = new FormData();
+      // SEC-01: OAuthトークンをGASに送信してサーバー側で検証
+      if (gAccessToken) fd.append('token', gAccessToken);
       Object.entries(params).forEach(([k,v])=>
         fd.append(k, typeof v==='string' ? v : JSON.stringify(v))
       );
@@ -3870,7 +3886,10 @@ async function syncData(silent=false, uploadOnly=false){
     }
 
     async function gasGet(params){
-      const qs = Object.entries(params).map(([k,v])=>
+      // SEC-01: tokenをクエリパラメータに追加
+      const allParams = { ...params };
+      if (gAccessToken) allParams.token = gAccessToken;
+      const qs = Object.entries(allParams).map(([k,v])=>
         encodeURIComponent(k)+'='+encodeURIComponent(typeof v==='string'?v:JSON.stringify(v))
       ).join('&');
       const res = await fetch(`${gasUrl}?${qs}`, { redirect:'follow' });
@@ -3968,6 +3987,10 @@ function applyLoadedData(data){
   if(data.members && data.members.length){
     MEMBERS = data.members.map(m => ({ ...m, id: String(m.id) }));
     _saveMembersLocal();
+    // BUG-05: MEMBERSが更新されたらcurrentUserを再取得（null参照防止）
+    if(currentUser){
+      currentUser = MEMBERS.find(m => m.id === currentUser.id) || currentUser;
+    }
     renderMemberList(); populateAssigneeSelects(); renderUserSelect();
   }
   if(data.meta){ applyMeta(data.meta); }
@@ -9680,6 +9703,14 @@ function setupModalUX(){
 setupModalUX();
 
 init();
+
+// BUG-02: 自動保存タイマー実行中にブラウザを閉じようとした場合に警告
+window.addEventListener('beforeunload', function(e) {
+  if (_autoSyncTimer) {
+    e.preventDefault();
+    e.returnValue = '保存中のデータがあります。ページを閉じると失われる可能性があります。';
+  }
+});
 </script>
 <!-- 休職者登録モーダル -->
 <div id="leave-modal-overlay" class="modal-overlay" role="dialog" aria-modal="true" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
