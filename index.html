@@ -2268,12 +2268,26 @@ function getPrevBizDay(date) {
 }
 
 // 前営業日の午前9時のリマインダー分数を計算
-function calcPrevBizDayMins(dueDate) {
-  var prevBiz = getPrevBizDay(dueDate);
-  var dueMidnightJst  = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate(), 0, 0, 0);
-  var prevBiz9amJst   = new Date(prevBiz.getFullYear(), prevBiz.getMonth(), prevBiz.getDate(), 9, 0, 0);
-  var diffMs = dueMidnightJst.getTime() - prevBiz9amJst.getTime();
-  return Math.round(diffMs / 60000);
+function get3BizDaysAgo(date) {
+  var d = new Date(date);
+  var count = 0;
+  while (count < 3) {
+    d.setDate(d.getDate() - 1);
+    if (!isHolidayOrWeekend(d)) { count++; }
+  }
+  return d;
+}
+function calc3BizDaysAgo9amMins(dueDate) {
+  var target = get3BizDaysAgo(dueDate);
+  var dueMidnightJst = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate(), 0, 0, 0);
+  var target9amJst   = new Date(target.getFullYear(), target.getMonth(), target.getDate(), 9, 0, 0);
+  return Math.round((dueMidnightJst.getTime() - target9amJst.getTime()) / 60000);
+}
+function calcPrevBizDay3pmMins(dueDate) {
+  var target = getPrevBizDay(dueDate);
+  var dueMidnightJst = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate(), 0, 0, 0);
+  var target3pmJst   = new Date(target.getFullYear(), target.getMonth(), target.getDate(), 15, 0, 0);
+  return Math.round((dueMidnightJst.getTime() - target3pmJst.getTime()) / 60000);
 }
 
 // ── エントリーポイント ─────────────────────────────────────────
@@ -2538,15 +2552,17 @@ function upsertTaskCalendar(task, member) {
       ev.setTitle(title);
       ev.setAllDayDate(dueDate);
       ev.setDescription(desc);
-      // 前営業日の午前9時にアラートを設定
+      // ダブルリマインダー: ①3営業日前9時 ②前営業日15時
       ev.removeAllReminders();
-      ev.addPopupReminder(calcPrevBizDayMins(dueDate));
+      ev.addPopupReminder(calc3BizDaysAgo9amMins(dueDate));
+      ev.addPopupReminder(calcPrevBizDay3pmMins(dueDate));
       existing.slice(1).forEach(function(e) { e.deleteEvent(); });
     } else {
       var newEv = cal.createAllDayEvent(title, dueDate, { description: desc, visibility: CalendarApp.Visibility.PRIVATE });
       newEv.setTag('roumu_task_id', String(task.id));
-      // 前営業日の午前9時にアラートを設定
-      newEv.addPopupReminder(calcPrevBizDayMins(dueDate));
+      // ダブルリマインダー: ①3営業日前9時 ②前営業日15時
+      newEv.addPopupReminder(calc3BizDaysAgo9amMins(dueDate));
+      newEv.addPopupReminder(calcPrevBizDay3pmMins(dueDate));
     }
     return { ok: true };
   } catch(err) {
@@ -2586,8 +2602,9 @@ function syncCal(memberId, email, calendarId, tasks) {
       if (!existing.length) {
         var ev = cal.createAllDayEvent(title, d, { description: t.note || '', visibility: CalendarApp.Visibility.PRIVATE });
         ev.setTag('roumu_task_id', String(t.id));
-        // 前営業日の午前9時にアラートを設定
-        ev.addPopupReminder(calcPrevBizDayMins(d));
+        // ダブルリマインダー: ①3営業日前9時 ②前営業日15時
+        ev.addPopupReminder(calc3BizDaysAgo9amMins(d));
+        ev.addPopupReminder(calcPrevBizDay3pmMins(d));
         synced++;
       }
     });
