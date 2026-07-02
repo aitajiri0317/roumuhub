@@ -4146,14 +4146,29 @@ function getThisWeekRange(){
 }
 
 function renderStats(){
-  const ts=fmt(T);
+  const ts = fmt(T);
   const {start:wStart, end:wEnd} = getThisWeekRange();
-  const pending=tasks.filter(t=>t.status!=='done');
-  const setEl=(id,val)=>{ const e=document.getElementById(id); if(e) e.textContent=val; };
+  const setEl = (id,val) => { const e=document.getElementById(id); if(e) e.textContent=val; };
+
+  // ダッシュボードと同じ集計基準に統一
+  // チームビュー：チームタスク＋個人タスク両方
+  // 個人ビュー：自分のタスクのみ
+  const privTasks = currentUser ? getPrivateTasks().map(t=>({...t,_isPrivate:true})) : [];
+  let base;
+  if(viewMode === 'personal' && currentUser){
+    // 個人ビュー：自分のタスクのみ
+    base = [...tasks, ...privTasks].filter(t => t.assignee === currentUser.id);
+  } else {
+    // チームビュー：チーム＋個人（privateは自分のもののみ）
+    const all = [...tasks, ...privTasks];
+    base = all.filter(t => !t.private || (currentUser && t.assignee === currentUser.id));
+  }
+
+  const pending = base.filter(t => t.status !== 'done');
   setEl('b-all',    pending.length);
-  setEl('b-today',  pending.filter(t=>t.due&&t.due.split('T')[0]===ts).length);
-  setEl('b-week',   pending.filter(t=>t.due&&t.due.split('T')[0]>=wStart&&t.due.split('T')[0]<=wEnd).length);
-  setEl('b-review', tasks.filter(t=>t.status==='review').length);
+  setEl('b-today',  pending.filter(t => t.due && t.due.split('T')[0] === ts).length);
+  setEl('b-week',   pending.filter(t => t.due && t.due.split('T')[0] >= wStart && t.due.split('T')[0] <= wEnd).length);
+  setEl('b-review', base.filter(t => t.status === 'review').length);
 }
 
 // ══ MEMBER LIST ══
@@ -6712,7 +6727,17 @@ function renderTodaySummary(){
   const el = document.getElementById('today-summary-content');
   if(!el) return;
   const ts = fmt(new Date());
-  const all = [...tasks, ...(currentUser?getPrivateTasks():[])];
+  // viewModeに応じて集計対象を切り替え（左ナビと統一）
+  const privTasks2 = currentUser ? getPrivateTasks().map(t=>({...t,_isPrivate:true})) : [];
+  let all;
+  if(viewMode === 'personal' && currentUser){
+    // 個人ビュー：自分のタスクのみ
+    all = [...tasks, ...privTasks2].filter(t => t.assignee === currentUser.id);
+  } else {
+    // チームビュー：チーム＋個人（privateは自分のもののみ）
+    const allBase = [...tasks, ...privTasks2];
+    all = allBase.filter(t => !t.private || (currentUser && t.assignee === currentUser.id));
+  }
   const todayTasks  = all.filter(t=>t.status!=='done'&&t.due&&t.due.split('T')[0]===ts);
   const overdue     = all.filter(t=>t.status!=='done'&&t.due&&t.due.split('T')[0]<ts);
   const inprogress  = all.filter(t=>t.status==='inprogress');
