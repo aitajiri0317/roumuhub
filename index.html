@@ -684,20 +684,6 @@ body.modal-open{overflow:hidden}
   <!-- RIGHT PANEL (ニュース時は非表示) -->
   
   <aside class="right-panel">
-    <!-- モード切替 -->
-    <div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface2)">
-      <div style="font-size:10px;font-family:var(--mono);font-weight:700;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">モード</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        <button id="sb-btn-team" onclick="setViewMode('team')"
-          style="padding:10px 6px;border-radius:8px;border:2px solid var(--accent);background:var(--accent);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .15s;text-align:center">
-          👥<br><span style="font-size:11px">チーム</span>
-        </button>
-        <button id="sb-btn-personal" onclick="setViewMode('personal')"
-          style="padding:10px 6px;border-radius:8px;border:2px solid var(--border);background:#fff;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .15s;text-align:center">
-          👤<br><span style="font-size:11px">個人</span>
-        </button>
-      </div>
-    </div>
     <!-- パネルタブ -->
     <div style="display:flex;border-bottom:1px solid var(--border);background:var(--surface)">
       <button class="panel-tab active" id="ptab-dash" onclick="switchRightTab('dash',this)">📊 ダッシュボード</button>
@@ -1957,35 +1943,7 @@ function setViewMode(mode){
   viewMode = mode;
   const isPersonal = mode === 'personal';
 
-  // ボタンのスタイル切替
-  // サイドバーボタンのスタイル切替
-  const sbTeam = document.getElementById('sb-btn-team');
-  const sbPersonal = document.getElementById('sb-btn-personal');
-  if(sbTeam){
-    sbTeam.style.background    = isPersonal ? '#fff' : 'var(--accent)';
-    sbTeam.style.color         = isPersonal ? 'var(--text2)' : '#fff';
-    sbTeam.style.borderColor   = isPersonal ? 'var(--border)' : 'var(--accent)';
-  }
-  if(sbPersonal){
-    sbPersonal.style.background  = isPersonal ? '#0ea5e9' : '#fff';
-    sbPersonal.style.color       = isPersonal ? '#fff' : 'var(--text2)';
-    sbPersonal.style.borderColor = isPersonal ? '#0ea5e9' : 'var(--border)';
-  }
-  // ヘッダーボタン（存在する場合のみ）
-  const btnTeam = document.getElementById('btn-team-view');
-  const btnPersonal = document.getElementById('btn-personal-view');
-  if(btnTeam){
-    btnTeam.style.background    = isPersonal ? 'transparent' : '#fff';
-    btnTeam.style.color         = isPersonal ? 'rgba(255,255,255,.7)' : 'var(--accent)';
-    btnTeam.style.borderColor   = isPersonal ? 'rgba(255,255,255,.4)' : '#fff';
-    btnTeam.style.boxShadow     = isPersonal ? 'none' : '0 1px 4px rgba(0,0,0,.15)';
-  }
-  if(btnPersonal){
-    btnPersonal.style.background  = isPersonal ? '#e0f2fe' : 'transparent';
-    btnPersonal.style.color       = isPersonal ? '#0369a1' : 'rgba(255,255,255,.7)';
-    btnPersonal.style.borderColor = isPersonal ? '#7dd3fc' : 'rgba(255,255,255,.4)';
-    btnPersonal.style.boxShadow   = isPersonal ? '0 1px 4px rgba(0,0,0,.15)' : 'none';
-  }
+  // ダッシュボード内の切替ボタンは renderTodaySummary() で再描画されるため個別更新不要
 
   // 個人ビューではチーム向け機能を非表示
   const teamOnlyEls = ['hdr-template-btn','hdr-csv-btn','member-list'];
@@ -6746,6 +6704,17 @@ function renderTodaySummary(){
   const greet = now.getHours()<12?'おはようございます':'お疲れさまです';
   el.innerHTML = `
     <div style="padding:12px 14px">
+      <!-- チーム/個人切替（ダッシュボードに一本化） -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+        <button id="db-btn-team" onclick="setViewMode('team')"
+          style="padding:8px 6px;border-radius:8px;border:2px solid ${viewMode!=='personal'?'var(--accent)':'var(--border)'};background:${viewMode!=='personal'?'var(--accent)':'#fff'};color:${viewMode!=='personal'?'#fff':'var(--text2)'};font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .15s;text-align:center">
+          👥 <span style="font-size:11px">チーム</span>
+        </button>
+        <button id="db-btn-personal" onclick="setViewMode('personal')"
+          style="padding:8px 6px;border-radius:8px;border:2px solid ${viewMode==='personal'?'#0ea5e9':'var(--border)'};background:${viewMode==='personal'?'#0ea5e9':'#fff'};color:${viewMode==='personal'?'#fff':'var(--text2)'};font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .15s;text-align:center">
+          👤 <span style="font-size:11px">個人</span>
+        </button>
+      </div>
       <div style="font-size:11px;color:var(--accent);font-weight:700;margin-bottom:4px">${greet}${currentUser?'、'+currentUser.name+'さん':''} 👋</div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:10px">${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日（${'日月火水木金土'[now.getDay()]}）</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
